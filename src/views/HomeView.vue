@@ -1,9 +1,23 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import MapLegend from '@/components/MapLegend.vue'
 import MarsGlobe from '@/components/MarsGlobe.vue'
 import { BASE_MAPS, DEFAULT_BASE_MAP_ID, getBaseMap, LANDMARKS } from '@/config/mars'
+import { clearSession, readSession } from '@/lib/session'
+
+const router = useRouter()
+const operator = readSession()?.operator ?? ''
+
+onMounted(() => {
+  document.title = 'ARES-MIV · Misión'
+})
+
+function logout() {
+  clearSession()
+  router.push({ name: 'login' })
+}
 
 const globe = ref(null)
 const baseMapId = ref(DEFAULT_BASE_MAP_ID)
@@ -66,6 +80,16 @@ function fmtHeight(h) {
           ARES<span class="text-mars-500">-MIV</span>
         </h1>
         <p class="text-xs text-white/60">Navegación y análisis geoespacial de Marte</p>
+        <p v-if="operator" class="mt-1 font-mono text-[10px] tracking-wide text-white/40">
+          {{ operator }}
+        </p>
+        <button
+          type="button"
+          class="mt-2 text-[11px] tracking-widest text-white/50 uppercase hover:text-mars-300"
+          @click="logout"
+        >
+          Cerrar terminal
+        </button>
       </div>
 
       <div
