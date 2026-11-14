@@ -1,74 +1,127 @@
-# Contrato de la API — ARES-MIV backend (v1)
+# Contrato unificado de la API — ARES-MIV (v1)
 
-Este documento es el **acuerdo entre frontend y backend**. Si algo de aquí cambia, se cambia
-primero este archivo (en un Pull Request) y después el código de los dos lados.
+> **Estado:** propuesta para aprobación del equipo. Une el contrato del frontend (PR #1 de
+> `ares-miv`) con el del backend (`JuniRanger/ares-miv-geospatial-system`, `docs/API_CONTRACTS.md`).
+> Qué se tomó de cada lado y por qué: [PROPUESTA_UNIFICACION.md](PROPUESTA_UNIFICACION.md).
+>
+> **Regla:** si algo de aquí cambia, se cambia primero este documento (por Pull Request) y
+> después el código de los dos lados.
 
 - **Base URL (desarrollo):** `http://localhost:8000/api/v1`
-- **Formato:** JSON (UTF-8). Las rutas y capas geográficas se devuelven en **GeoJSON** (RFC 7946).
-- **Documentación interactiva:** FastAPI la genera sola en `http://localhost:8000/docs`.
-  Debe coincidir con este contrato.
+- **Formato:** JSON UTF-8, nombres en `snake_case`.
+- **Documentación interactiva:** `http://localhost:8000/docs` (FastAPI). Debe coincidir con este documento.
 
 ---
 
-## 0. Convenciones (leer antes de programar)
+## 0. Convenciones
 
-| Tema | Regla |
-|---|---|
-| Coordenadas | Grados decimales, **planetocéntricas**, longitud **este positiva** en `[-180, 180]`. Orden GeoJSON: `[lon, lat, elev]` |
-| Elevación | Metros **respecto al areoide de Marte** (el mismo datum que el DEM HiRISE y que `elev_geoid` de Curiosity). Negativo = por debajo del nivel de referencia. En el Monte Sharp los valores rondan −4 500 a −3 000 m |
-| Distancias | Metros (`_m`) · Tiempos en minutos (`_min`) · Ángulos en grados (`_deg`) · Dosis en mGy (`_mgy`) |
-| Nombres JSON | `snake_case` |
-| Zona de estudio | Solo se calculan rutas dentro del área cargada (ver `GET /site`). Fuera de ella → error `POINT_OUT_OF_AREA` |
-| Datos estimados | Todo valor que sea **modelo y no medición** lleva `"estimated": true` y un campo `model` que explica de dónde sale |
+### 0.1 Sistema de coordenadas (decisión del equipo)
 
-### Formato de error (igual en todos los endpoints)
+| Concepto | Regla | Notas |
+|---|---|---|
+| Cuerpo y datum | **Mars 2000 (IAU)** | El mismo de NASA Trek y de los productos USGS |
+| Latitud | Grados decimales, **planetocéntrica**, `[-90, 90]` | Ángulo medido desde el centro de Marte |
+| Longitud | Grados decimales, **este positiva**, `[-180, 180]` | El Monte Sharp queda en ≈ `137.4`. Si una fuente usa `0–360`, se normaliza **al leerla** |
+| Elevación | **Metros respecto al areoide** de Marte | Mismo datum que el DEM HiRISE de Gale y que `elev_geoid` de Curiosity. Negativo = bajo el nivel de referencia (en el Monte Sharp, ≈ −4 500 a −3 000 m) |
+| Objetos JSON | Campos con nombre: `{"latitude": -4.8, "longitude": 137.4}` | Convención del backend, la más explícita |
+| Geometrías GeoJSON | Orden `[longitude, latitude]` o `[longitude, latitude, elevation_m]` | RFC 7946 |
+| Proyección interna | Libre (la nativa del DEM) | La API **solo** expone latitud/longitud; el backend convierte con `pyproj` |
+
+> **Por qué importa:** en la latitud del Monte Sharp, confundir latitud planetocéntrica con
+> planetográfica desplaza los puntos **3,26 km**: más que toda una caminata. Prueba de aceptación
+> en la [propuesta](PROPUESTA_UNIFICACION.md#3-prueba-de-aceptación-de-coordenadas).
+
+### 0.2 Unidades
+
+Sufijo obligatorio en el nombre del campo: `_m` metros · `_min` minutos · `_deg` grados ·
+`_mgy` miligray · `_ms` milisegundos. Las distancias van **siempre en metros** (nunca km).
+
+### 0.3 Honestidad de los datos (regla del backend, se mantiene)
+
+- **Nunca se inventan datos.** Si no hay dato válido, el campo vale `null` y su disponibilidad lo indica.
+- Lo que sea **modelo y no medición** (p. ej. radiación) se marca `"estimated"` en `data_quality`
+  o con `"estimated": true`, y lleva un campo `model` que explica de dónde sale.
+- Una funcionalidad sin terminar responde `501 NOT_IMPLEMENTED`: el frontend lo muestra como
+  "en desarrollo", no como error.
+
+### 0.4 Formato de error (todos los endpoints)
 
 ```json
 {
   "error": {
     "code": "POINT_OUT_OF_AREA",
-    "message": "El punto de destino está fuera de la zona de estudio (Monte Sharp).",
-    "details": { "field": "end", "bbox": [137.30, -4.90, 137.50, -4.60] }
+    "message": "El destino está fuera de la zona de estudio (Monte Sharp).",
+    "details": { "field": "destination", "bbox": [137.30, -4.90, 137.50, -4.60] }
   }
 }
 ```
+`details` es **opcional** (objeto o `null`).
 
 | HTTP | `code` | Cuándo |
 |---|---|---|
 | 400 | `INVALID_REQUEST` | JSON mal formado |
-| 422 | `VALIDATION_ERROR` | Tipos o rangos incorrectos (lo genera Pydantic; se re-envuelve en este formato) |
+| 404 | `RESOURCE_NOT_FOUND` | Recurso inexistente (ruta guardada, capa…) |
+| 422 | `VALIDATION_ERROR` | Tipos o rangos inválidos. `details.fields` lista los campos con problema |
 | 422 | `POINT_OUT_OF_AREA` | Un punto cae fuera del DEM cargado |
-| 422 | `POINT_NOT_TRAVERSABLE` | El punto de inicio/fin está en terreno prohibido (p. ej. pendiente > límite) |
-| 422 | `NO_FEASIBLE_ROUTE` | No existe ruta que cumpla las restricciones. `details` dice qué restricción la impide |
-| 502 | `UPSTREAM_UNAVAILABLE` | Falló un servicio de la NASA (imágenes, travesía) y no hay caché |
-| 500 | `INTERNAL_ERROR` | Error inesperado. **Nunca** devolver trazas de Python al cliente |
+| 422 | `POINT_NOT_TRAVERSABLE` | Origen/destino/parada en terreno prohibido |
+| 422 | `NO_FEASIBLE_ROUTE` | Ninguna ruta cumple las restricciones. `details.blocking_constraint` dice cuál |
+| 500 | `INTERNAL_SERVER_ERROR` | Error inesperado. **Nunca** se envían trazas de Python |
+| 501 | `NOT_IMPLEMENTED` | Endpoint aún no implementado |
+| 502 | `UPSTREAM_UNAVAILABLE` | Falló un servicio de la NASA y no hay caché |
+| 503 | `DATASET_UNAVAILABLE` | Falta un dato necesario (p. ej. el DEM no cargó) |
+
+---
+
+## Resumen de endpoints
+
+| Método | Ruta | Prioridad | Qué hace |
+|---|---|---|---|
+| GET | `/health` | P0 | Estado del servidor y de los datos |
+| GET | `/site` | P1 | Zona de estudio y paradas científicas |
+| GET | `/mars/terrain` | P1 | Elevación, pendiente, rugosidad… en un punto |
+| GET | `/mars/layers` | P1 | Catálogo de capas para el panel del frontend |
+| GET | `/mars/traverse/curiosity` | P1 | Travesía real de Curiosity en la zona |
+| POST | `/routes/plan` | **P2** | **Ruta A\*** con métricas, perfil y alertas |
+| GET | `/routes/{route_id}` | P3 | Recupera una ruta ya calculada (en memoria) |
+| GET | `/mars/layers/{layer_id}/raster` | P3 | PNG generado por el backend (pendiente, radiación) |
+| GET | `/mars/images/near` | P3 | Fotos de Curiosity cerca de un punto |
+
+**Eliminados respecto a los contratos anteriores:** `GET /mars/elevation` (incluido en
+`/mars/terrain`), `GET /mars/texture` (el frontend usa las teselas de NASA Trek),
+`GET /mars/layers/{id}/data` (sustituido por `/site` y `/mars/traverse/curiosity`).
 
 ---
 
 ## 1. `GET /health`
 
-Comprueba que el servidor está vivo **y que el DEM está cargado**.
-
 ```json
-{ "status": "ok", "dem_loaded": true, "version": "1.0.0" }
+{
+  "status": "ok",
+  "api_version": "1.0.0",
+  "datasets": { "dem": "available", "science_stops": "available" },
+  "database_status": "disabled"
+}
 ```
-Si el DEM no cargó: HTTP 503 con `"status": "degraded", "dem_loaded": false`.
+- `status`: `"ok"` o `"degraded"` (si falta el DEM; en ese caso HTTP **503**).
+- `datasets.*`: `"available"` | `"unavailable"`.
+- `database_status`: `"disabled"` en v1 (no hay base de datos; ver propuesta).
 
 ---
 
 ## 2. `GET /site`
 
-Describe la zona de estudio. El frontend lo usa para encuadrar la cámara, saber dónde se puede
-hacer clic y mostrar las paradas científicas.
+Zona de estudio. El frontend la usa para encuadrar la cámara, limitar dónde se puede hacer clic y
+pintar las paradas científicas.
 
 ```json
 {
-  "id": "mount-sharp",
+  "site_id": "mount-sharp",
   "name": "Monte Sharp (Aeolis Mons), cráter Gale",
   "bbox": [137.30, -4.90, 137.50, -4.60],
   "dem": {
-    "source": "MSL Gale Merged DEM 1m v3 (USGS / HiRISE)",
+    "source": "MSL Gale Merged DEM 1m v3 (USGS / MRO HiRISE)",
     "resolution_m": 2.0,
+    "coordinate_reference_system": "<WKT o código leído con gdalinfo>",
     "elevation_min_m": -4520.3,
     "elevation_max_m": -3015.8
   },
@@ -79,9 +132,9 @@ hacer clic y mostrar las paradas científicas.
         "type": "Feature",
         "geometry": { "type": "Point", "coordinates": [137.3889, -4.8260, -3472.1] },
         "properties": {
-          "id": "boxwork-01",
+          "stop_id": "boxwork-01",
           "name": "Retículas (boxwork)",
-          "objective": "Estudiar las formaciones de retículas y su origen ligado al agua subterránea",
+          "objective": "Estudiar las retículas y su relación con agua subterránea antigua",
           "data_sources": ["HiRISE", "CRISM", "Curiosity Mastcam"],
           "nearest_sol": 5073
         }
@@ -90,150 +143,160 @@ hacer clic y mostrar las paradas científicas.
   }
 }
 ```
-
-> Las paradas científicas (`science_stops`) las define el equipo de ciencia en un archivo
-> `backend/data/science_stops.geojson`; el backend solo lo sirve.
+`bbox` = `[lon_min, lat_min, lon_max, lat_max]`. Las paradas salen de
+`data/science_stops.geojson` (lo mantiene el equipo de ciencia). Los valores del ejemplo son
+ilustrativos.
 
 ---
 
-## 3. `GET /terrain/point?lat={lat}&lon={lon}`
+## 3. `GET /mars/terrain?latitude={lat}&longitude={lon}`
 
-Muestrea el terreno en un punto. Lo usa el frontend al mover el cursor y al hacer clic para
-fijar A y B (muestra altitud y pendiente reales del DEM).
-
-| Parámetro | Tipo | Obligatorio |
-|---|---|---|
-| `lat` | float `[-90, 90]` | sí |
-| `lon` | float `[-180, 180]` | sí |
+Muestreo del terreno en un punto: cursor, clic para fijar origen/destino, inspección.
 
 ```json
 {
-  "lat": -4.8260,
-  "lon": 137.3889,
+  "latitude": -4.8260,
+  "longitude": 137.3889,
   "elevation_m": -3472.1,
   "slope_deg": 11.8,
   "roughness_m": 0.42,
+  "thermal_inertia": null,
   "traversable": true,
   "radiation": {
     "dose_rate_mgy_per_day": 0.21,
     "estimated": true,
     "model": "Calibrado con Curiosity RAD en Gale; corregido por columna atmosférica según elevación"
+  },
+  "data_availability": {
+    "elevation": true, "slope": true, "roughness": true, "thermal": false, "radiation": true
   }
 }
 ```
-- `traversable` se evalúa con los **límites por defecto** de caminata (ver §4).
+- Cualquier medida puede ser `null`; `data_availability` lo explica.
+- `thermal_inertia` en unidades SI de inercia térmica (J·m⁻²·K⁻¹·s⁻½) cuando exista.
+- `traversable`: con los límites **por defecto** del perfil `eva_walk`; `null` si falta la pendiente.
+- `radiation`: `null` si el modelo no está disponible.
 - Fuera de la zona → `422 POINT_OUT_OF_AREA`.
 
 ---
 
-## 4. `POST /routes` — cálculo de ruta A*
-
-El endpoint principal. Calcula la ruta óptima para una **caminata de astronautas (EVA)** pasando,
-en orden, por las paradas científicas indicadas.
+## 4. `POST /routes/plan` — ruta A*
 
 ### Petición
 
 ```json
 {
-  "start": { "lat": -4.8150, "lon": 137.3720 },
-  "end":   { "lat": -4.8260, "lon": 137.3889 },
+  "origin":      { "latitude": -4.8150, "longitude": 137.3720 },
+  "destination": { "latitude": -4.8260, "longitude": 137.3889 },
   "waypoints": [
-    { "lat": -4.8201, "lon": 137.3801, "stop_id": "boxwork-01", "stop_duration_min": 20 }
+    { "latitude": -4.8201, "longitude": 137.3801, "stop_id": "boxwork-01", "stop_duration_min": 20 }
   ],
   "profile": "eva_walk",
   "constraints": {
     "max_slope_deg": 15,
     "max_distance_m": 5000,
     "max_duration_min": 240,
-    "must_return_to_start": false,
-    "radiation_weight": 0.2
+    "must_return_to_origin": false
+  },
+  "preferences": {
+    "avoid_rough_terrain": true,
+    "consider_thermal_data": true,
+    "minimize_radiation": false
   }
 }
 ```
 
-| Campo | Tipo | Obligatorio | Por defecto | Notas |
+| Campo | Tipo | Oblig. | Defecto | Notas |
 |---|---|---|---|---|
-| `start`, `end` | `{lat, lon}` | sí | — | |
-| `waypoints` | lista | no | `[]` | Se visitan **en el orden dado**. Máx. 10 |
-| `waypoints[].stop_duration_min` | int ≥ 0 | no | `0` | Tiempo de trabajo científico en la parada |
+| `origin`, `destination` | `{latitude, longitude}` | sí | — | |
+| `waypoints` | lista (máx. 10) | no | `[]` | Paradas científicas, **en el orden dado** |
+| `waypoints[].stop_id` | string | no | `null` | Id de `/site` si es una parada conocida |
+| `waypoints[].stop_duration_min` | int ≥ 0 | no | `0` | Tiempo de trabajo en la parada |
 | `profile` | `"eva_walk"` \| `"rover"` | no | `"eva_walk"` | Cambia velocidad y límites por defecto |
-| `constraints.max_slope_deg` | float `(0, 45]` | no | `15` (eva) / `25` (rover) | Celdas más empinadas = **prohibidas** |
-| `constraints.max_distance_m` | float > 0 | no | `5000` | Si la mejor ruta lo supera → `NO_FEASIBLE_ROUTE` |
-| `constraints.max_duration_min` | float > 0 | no | `240` | Incluye las paradas. Límite de soporte vital del traje |
-| `constraints.must_return_to_start` | bool | no | `false` | Si `true`, se añade el regreso a `start` y cuenta en distancia y tiempo |
-| `constraints.radiation_weight` | float `[0, 1]` | no | `0` | `0` = ignorar radiación; `1` = evitarla al máximo |
+| `constraints.max_slope_deg` | float `(0, 45]` | no | 15 (eva) / 25 (rover) | Más empinado = **prohibido** |
+| `constraints.max_distance_m` | float > 0 | no | 5000 | Si se supera → `NO_FEASIBLE_ROUTE` |
+| `constraints.max_duration_min` | float > 0 | no | 240 | Incluye paradas. Soporte vital del traje |
+| `constraints.must_return_to_origin` | bool | no | `false` | Añade el regreso y lo cuenta |
+| `preferences.avoid_rough_terrain` | bool | no | `true` | Penaliza rugosidad alta |
+| `preferences.consider_thermal_data` | bool | no | `true` | Penaliza inercia térmica baja (arena suelta) si hay dato |
+| `preferences.minimize_radiation` | bool | no | `false` | Penaliza dosis estimada alta |
 
-> Los valores por defecto (15°, 5 km, 240 min) son **parámetros de diseño a calibrar** por el
-> equipo, no estándares oficiales de la NASA. Van en `backend/app/core/config.py`.
+> Los valores por defecto (15°, 5 km, 240 min) son **parámetros de diseño a calibrar**, no
+> normas de la NASA. Viven en la configuración del backend.
 
-### Respuesta `200 OK` — un `Feature` GeoJSON
+### Respuesta `200 OK`
 
 ```json
 {
-  "type": "Feature",
+  "route_id": "rt_7f3c2a",
+  "status": "completed",
+  "profile": "eva_walk",
+  "risk_level": "moderate",
   "geometry": {
     "type": "LineString",
-    "coordinates": [
-      [137.3720, -4.8150, -3501.2],
-      [137.3731, -4.8158, -3498.7]
-    ]
+    "coordinates": [[137.3720, -4.8150, -3501.2], [137.3731, -4.8158, -3498.7]]
   },
-  "properties": {
-    "profile": "eva_walk",
-    "metrics": {
-      "distance_m": 2384.5,
-      "elevation_gain_m": 96.4,
-      "elevation_loss_m": 41.0,
-      "max_slope_deg": 13.7,
-      "mean_slope_deg": 4.2,
-      "est_walking_time_min": 71,
-      "est_total_time_min": 91,
-      "radiation": {
-        "est_dose_mgy": 0.0133,
-        "estimated": true,
-        "model": "Dosis de superficie RAD × tiempo total, corregida por elevación"
-      }
-    },
-    "profile_samples": [
-      { "distance_m": 0.0, "elevation_m": -3501.2, "slope_deg": 2.1 },
-      { "distance_m": 10.0, "elevation_m": -3498.7, "slope_deg": 3.4 }
-    ],
-    "alerts": [
-      {
-        "id": "a1",
-        "type": "steep_slope",
-        "severity": "warning",
-        "message": "Pendiente de 13.7° durante 40 m, cerca del límite de 15°.",
-        "coordinates": [137.3802, -4.8203, -3460.0],
-        "distance_m": 1210.0,
-        "length_m": 40.0
-      }
-    ],
-    "stops": [
-      { "stop_id": "boxwork-01", "distance_m": 1290.0, "arrival_min": 39 }
-    ],
-    "computation": { "grid_resolution_m": 2.0, "nodes_expanded": 184233, "elapsed_ms": 812 }
-  }
+  "metrics": {
+    "distance_m": 2384.5,
+    "elevation_gain_m": 96.4,
+    "elevation_loss_m": 41.0,
+    "max_slope_deg": 13.7,
+    "mean_slope_deg": 4.2,
+    "est_walking_time_min": 71,
+    "est_total_time_min": 91,
+    "est_radiation_dose_mgy": 0.0133
+  },
+  "elevation_profile": [
+    { "distance_m": 0.0,  "latitude": -4.8150, "longitude": 137.3720, "elevation_m": -3501.2, "slope_deg": 2.1 },
+    { "distance_m": 10.0, "latitude": -4.8151, "longitude": 137.3721, "elevation_m": -3498.7, "slope_deg": 3.4 }
+  ],
+  "stops": [
+    { "stop_id": "boxwork-01", "distance_m": 1290.0, "arrival_min": 39 }
+  ],
+  "warnings": [
+    {
+      "code": "STEEP_SLOPE",
+      "severity": "warning",
+      "message": "Pendiente de 13.7° durante 40 m, cerca del límite de 15°.",
+      "latitude": -4.8203,
+      "longitude": 137.3802,
+      "distance_m": 1210.0,
+      "length_m": 40.0
+    }
+  ],
+  "data_quality": {
+    "elevation": "available",
+    "slope": "available",
+    "roughness": "available",
+    "thermal": "unavailable",
+    "radiation": "estimated"
+  },
+  "computation": { "grid_resolution_m": 2.0, "nodes_expanded": 184233, "elapsed_ms": 812 }
 }
 ```
 
-**Reglas de la respuesta**
-- `geometry.coordinates` va **simplificada** (máx. ~2 000 vértices) pero siempre con elevación.
-- `profile_samples` va **remuestreado cada 10 m**: es lo que dibuja la gráfica de perfil.
-- Cada alerta tiene `coordinates` **y** `distance_m`. Con eso el frontend la pinta en el mapa 3D
-  y en la gráfica a la vez.
+**Reglas**
+- `geometry.coordinates`: simplificada (máx. ~2 000 vértices), con elevación si existe.
+- `elevation_profile`: **cada 10 m** de recorrido. `distance_m` es el eje X de la gráfica.
+- Cada `warning` lleva **posición** (`latitude`/`longitude`) **y** `distance_m`: el frontend la
+  pinta a la vez en el mapa 3D y en la gráfica. `length_m` es opcional (alertas de tramo).
+- `metrics.est_radiation_dose_mgy`: `null` si no hay modelo.
+- `risk_level`: `"low"` | `"moderate"` | `"high"` | `"unknown"`, a partir de los `warnings`.
+- `data_quality.*`: `"available"` | `"partial"` | `"unavailable"` | `"estimated"`.
 
-**Tipos de alerta (`alerts[].type`)**
+**Códigos de `warnings[].code`**
 
-| `type` | Cuándo | `severity` |
+| `code` | Cuándo | `severity` |
 |---|---|---|
-| `steep_slope` | Tramo con pendiente ≥ 80 % del límite | `warning` (≥ 80 %) |
-| `rough_terrain` | Rugosidad alta (rocas, terreno roto) | `warning` |
-| `long_exposure` | Dosis estimada > umbral configurado | `warning` / `critical` |
-| `time_budget` | Tiempo total ≥ 80 % de `max_duration_min` | `warning` / `critical` (≥ 95 %) |
-| `far_from_start` | Punto de la ruta a más de X m de la base (regreso difícil) | `info` / `warning` |
+| `STEEP_SLOPE` | Tramo con pendiente ≥ 80 % de `max_slope_deg` | `warning` |
+| `ROUGH_TERRAIN` | Rugosidad alta (rocas, terreno roto) | `warning` |
+| `LOOSE_TERRAIN` | Inercia térmica baja (arena suelta) | `warning` |
+| `RADIATION_EXPOSURE` | Dosis estimada sobre el umbral | `warning` / `critical` |
+| `TIME_BUDGET` | Tiempo total ≥ 80 % de `max_duration_min` (≥ 95 % = `critical`) | `warning` / `critical` |
+| `FAR_FROM_ORIGIN` | Punto lejos de la base (regreso difícil) | `info` / `warning` |
+| `DATA_GAP` | Tramo sin datos válidos del DEM | `warning` |
 
-### Errores específicos
+**Error de ruta imposible**
 ```json
 {
   "error": {
@@ -246,13 +309,88 @@ en orden, por las paradas científicas indicadas.
 
 ---
 
-## 5. `GET /traverse/curiosity`
+## 5. `GET /routes/{route_id}`
 
-Travesía **real** de Curiosity recortada a la zona de estudio. Sirve como referencia ("por aquí ya
-pasó un rover") y para validar las pendientes del A* con las que midió el rover.
+Devuelve la misma respuesta que `POST /routes/plan`. En v1 las rutas se guardan **en memoria**
+(se pierden al reiniciar el servidor). Si no existe → `404 RESOURCE_NOT_FOUND`.
 
-Fuente: `https://mars.nasa.gov/mmgis-maps/MSL/Layers/json/MSL_waypoints.json` (verificado:
-1 389 puntos hasta el sol 5073). El backend lo **descarga y cachea** (TTL 24 h).
+---
+
+## 6. `GET /mars/layers`
+
+Catálogo de capas. Las teselas de imagen las sirve **NASA Trek directamente** al frontend; el
+backend solo centraliza URLs, leyendas, créditos y disponibilidad.
+
+```json
+{
+  "layers": [
+    {
+      "layer_id": "hirise-ortho",
+      "name": "Imagen HiRISE (25 cm)",
+      "description": "Mosaico HiRISE del área recorrida por Curiosity.",
+      "category": "optical",
+      "available": true,
+      "source": "NASA/JPL/University of Arizona — MRO HiRISE (vía NASA Trek)",
+      "units": null,
+      "spatial_resolution": "0.25 m",
+      "coordinate_reference_system": "Mars 2000",
+      "tile_url": "https://trek.nasa.gov/tiles/Mars/EQ/curiosity_hirise_mosaic/1.0.0/default/default028mm/{z}/{y}/{x}.png",
+      "tiling_scheme": "geographic",
+      "bbox": [137.1224669, -4.9254743, 137.7298129, -4.2489588],
+      "max_level": 16,
+      "default_opacity": 1.0,
+      "legend": null
+    },
+    {
+      "layer_id": "slope",
+      "name": "Pendiente calculada",
+      "description": "Pendiente derivada del DEM HiRISE.",
+      "category": "derived",
+      "available": false,
+      "source": "Cálculo propio a partir del DEM",
+      "units": "deg",
+      "spatial_resolution": "2 m",
+      "coordinate_reference_system": "Mars 2000",
+      "tile_url": null,
+      "raster_url": "/api/v1/mars/layers/slope/raster",
+      "tiling_scheme": null,
+      "bbox": [137.30, -4.90, 137.50, -4.60],
+      "max_level": null,
+      "default_opacity": 0.6,
+      "legend": { "type": "ramp", "unit": "deg", "stops": [[0, "#2bb3c0"], [15, "#e6dc4a"], [30, "#c8423a"]] }
+    }
+  ]
+}
+```
+- `category` ∈ `optical | topographic | thermal | spectral | geologic | radiation | derived`.
+- Una capa usa **`tile_url`** (teselas de Trek) **o** `raster_url` (PNG único del backend).
+- `available: false` = planificada pero sin dato validado (regla de honestidad).
+
+Capas Trek ya verificadas (formato y nivel máximo leídos de su `WMTSCapabilities.xml`):
+
+| Capa Trek | Formato | Nivel máx. |
+|---|---|---|
+| `curiosity_hirise_mosaic` (HiRISE 25 cm) | png | 16 |
+| `Gale_CTX_BlockAdj_dd` (CTX Gale) | png | 12 |
+| `THEMIS_DayIR_ControlledMosaics_100m_v2_oct2018` | png | 9 |
+| `Mars_MGS_MOLA_ClrShade_merge_global_463m` | jpg | 7 |
+
+Las capas CRISM de Trek son de tipo *Feature* (no WMTS) y requieren otro método.
+
+---
+
+## 7. `GET /mars/layers/{layer_id}/raster`
+
+PNG georreferenciado generado por el backend (p. ej. `slope`, `radiation`) que cubre exactamente
+el `bbox` de la capa. Respuesta `image/png`. Si no existe → `404 RESOURCE_NOT_FOUND`.
+
+---
+
+## 8. `GET /mars/traverse/curiosity`
+
+Travesía real de Curiosity **recortada a la zona de estudio**. Fuente:
+`https://mars.nasa.gov/mmgis-maps/MSL/Layers/json/MSL_waypoints.json` (1 389 puntos hasta el
+sol 5073, verificado). Caché de 24 h.
 
 ```json
 {
@@ -269,101 +407,41 @@ Fuente: `https://mars.nasa.gov/mmgis-maps/MSL/Layers/json/MSL_waypoints.json` (v
 
 ---
 
-## 6. `GET /images/near?lat={lat}&lon={lon}&limit={n}`
+## 9. `GET /mars/images/near?latitude={lat}&longitude={lon}&limit={n}`
 
-**Imágenes en primera persona** de lo que vio Curiosity cerca de un punto. El backend:
-1. busca el waypoint de Curiosity más cercano al punto (§5);
-2. toma su `sol`;
-3. consulta la API pública de imágenes en bruto de la NASA para ese sol.
+Fotos en primera persona: waypoint de Curiosity más cercano → su `sol` → API pública de imágenes
+en bruto de la NASA para ese sol.
 
-| Parámetro | Tipo | Por defecto | Notas |
-|---|---|---|---|
-| `lat`, `lon` | float | — | obligatorios |
-| `limit` | int `[1, 50]` | `12` | |
-| `instruments` | csv | `NAV_LEFT_B,MAST_LEFT,MAST_RIGHT` | Navcam y Mastcam: las más útiles para "qué voy a ver" |
+| Parámetro | Tipo | Defecto |
+|---|---|---|
+| `latitude`, `longitude` | float | obligatorios |
+| `limit` | int `[1, 50]` | `12` |
+| `instruments` | csv | `NAV_LEFT_B,MAST_LEFT,MAST_RIGHT` |
 
 ```json
 {
-  "query": { "lat": -4.8260, "lon": 137.3889 },
-  "nearest_waypoint": { "sol": 5073, "distance_m": 18.4, "coordinates": [137.388886, -4.82602331] },
+  "query": { "latitude": -4.8260, "longitude": 137.3889 },
+  "nearest_waypoint": { "sol": 5073, "distance_m": 18.4, "latitude": -4.82602331, "longitude": 137.388886 },
   "images": [
     {
-      "id": "NLB_...",
+      "image_id": "NLB_…",
       "sol": 5073,
       "instrument": "NAV_LEFT_B",
       "taken_at": "2026-10-30T14:21:07Z",
-      "url": "https://mars.nasa.gov/msl-raw-images/proj/msl/redops/ods/surface/sol/05073/opgs/edr/ncam/....JPG",
+      "url": "https://mars.nasa.gov/msl-raw-images/…",
       "credit": "NASA/JPL-Caltech"
     }
   ]
 }
 ```
-- Las imágenes **no traen coordenadas propias**: la relación es por sol. Si en ese sol el rover
-  se movió, pueden ser de puntos cercanos. Mostrar `nearest_waypoint.distance_m` en la interfaz.
-- Cachear por `sol` (las imágenes de un sol pasado no cambian).
+Las imágenes **no traen coordenadas**: se relacionan por sol. Mostrar `nearest_waypoint.distance_m`.
 
 ---
 
-## 7. `GET /layers`
+## Checklist de "hecho" por endpoint
 
-Catálogo de capas para el panel del frontend. Las teselas las sirve **NASA Trek directamente**
-(el backend no las procesa); este endpoint centraliza URLs, leyendas y créditos.
-
-```json
-{
-  "layers": [
-    {
-      "id": "hirise-ortho",
-      "name": "Imagen HiRISE (25 cm)",
-      "category": "optical",
-      "tile_url": "https://trek.nasa.gov/tiles/Mars/EQ/curiosity_hirise_mosaic/1.0.0/default/default028mm/{z}/{y}/{x}.png",
-      "tiling_scheme": "geographic",
-      "bbox": [137.1224669, -4.9254743, 137.7298129, -4.2489588],
-      "max_level": 16,
-      "default_opacity": 1.0,
-      "credit": "NASA/JPL/University of Arizona — MRO HiRISE",
-      "legend": null
-    },
-    {
-      "id": "slope",
-      "name": "Pendiente calculada",
-      "category": "derived",
-      "tile_url": "http://localhost:8000/api/v1/tiles/slope/{z}/{x}/{y}.png",
-      "tiling_scheme": "geographic",
-      "legend": { "type": "ramp", "unit": "deg", "stops": [[0, "#2bb3c0"], [15, "#e6dc4a"], [30, "#c8423a"]] }
-    }
-  ]
-}
-```
-`category` ∈ `optical | topographic | thermal | spectral | geologic | radiation | derived`.
-
-> El `max_level` y el formato de cada capa Trek salen de su `WMTSCapabilities.xml`
-> (`https://trek.nasa.gov/tiles/Mars/EQ/<capa>/1.0.0/WMTSCapabilities.xml`). Ya verificados:
->
-> | Capa Trek | Formato | Nivel máx. |
-> |---|---|---|
-> | `curiosity_hirise_mosaic` (HiRISE 25 cm) | png | 16 |
-> | `Gale_CTX_BlockAdj_dd` (CTX Gale) | png | 12 |
-> | `THEMIS_DayIR_ControlledMosaics_100m_v2_oct2018` | png | 9 |
-> | `Mars_MGS_MOLA_ClrShade_merge_global_463m` | jpg | 7 |
-> | `Gale_DEM_SMG_1m` (DEM **coloreado**, solo visual) | png | — |
->
-> Las capas CRISM de Trek son de tipo *Feature* (no teselas WMTS): requieren otro método.
-
----
-
-## 8. (Fase 2) `GET /tiles/{layer}/{z}/{x}/{y}.png`
-
-Teselas generadas por el backend a partir del DEM: `slope` (pendiente) y `radiation`
-(dosis estimada). Esquema geográfico 2×1 en nivel 0, 256×256 px, igual que NASA Trek.
-Respuesta `image/png`; fuera de la zona → PNG transparente. Opcional para la primera entrega:
-se puede empezar precalculando un PNG único de la zona.
-
----
-
-## Checklist de "hecho" para cada endpoint
-
-- [ ] Modelo Pydantic de entrada y salida igual a este documento
-- [ ] Errores en el formato de §0 (nunca trazas de Python)
-- [ ] Al menos un test con un caso válido y uno de error
+- [ ] Modelos Pydantic de entrada y salida iguales a este documento
+- [ ] Errores con el formato de §0.4 (sin trazas de Python)
+- [ ] Al menos un test válido y uno de error
 - [ ] Aparece correcto en `/docs`
+- [ ] Ningún dato inventado: `null` + disponibilidad cuando falte
