@@ -90,6 +90,8 @@ export const LANDMARKS = [
   { id: 'olympus', name: 'Monte Olimpo', lat: 18.65, lon: -133.8, range: 1_100_000 },
   { id: 'valles', name: 'Valles Marineris', lat: -13.9, lon: -59.2, range: 2_600_000 },
   { id: 'gale', name: 'Cráter Gale', lat: -5.4, lon: 137.8, range: 320_000 },
+  // Zona de la caminata (bbox de /site en el contrato: 137.30–137.50 E, −4.90 a −4.60).
+  { id: 'sharp', name: 'Monte Sharp (zona EVA)', lat: -4.75, lon: 137.4, range: 45_000 },
   { id: 'jezero', name: 'Cráter Jezero', lat: 18.38, lon: 77.58, range: 140_000 },
   { id: 'hellas', name: 'Hellas Planitia', lat: -42.4, lon: 70.5, range: 3_200_000 },
 ]

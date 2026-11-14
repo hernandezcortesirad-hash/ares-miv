@@ -1,22 +1,29 @@
 // Todo lo que toca Cesium vive aquí; los componentes Vue solo llaman a estas funciones.
 import {
   BoundingSphere,
+  Cartesian2,
   Cartesian3,
   Cesium3DTileset,
+  ClassificationType,
   Color,
   Credit,
+  CustomDataSource,
+  DistanceDisplayCondition,
   Ellipsoid,
   EllipsoidTerrainProvider,
   GeographicTilingScheme,
   Globe,
   HeadingPitchRange,
+  HeightReference,
   ImageryLayer,
   Ion,
+  LabelStyle,
   Math as CesiumMath,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   UrlTemplateImageryProvider,
   Viewer,
+  VerticalOrigin,
 } from 'cesium'
 
 import { HOME_VIEW } from '@/config/mars'
@@ -160,6 +167,118 @@ export function trackCursor(viewer, onMove) {
     destroy() {
       if (frame) cancelAnimationFrame(frame)
       handler.destroy()
+    },
+  }
+}
+
+/** Llama a onClick con la posición geográfica del clic izquierdo (o null fuera de Marte). */
+export function trackClick(viewer, onClick) {
+  const handler = new ScreenSpaceEventHandler(viewer.scene.canvas)
+  handler.setInputAction((ev) => {
+    if (!viewer.isDestroyed()) onClick(pickCartographic(viewer, ev.position))
+  }, ScreenSpaceEventType.LEFT_CLICK)
+  return { destroy: () => handler.destroy() }
+}
+
+// ---------------------------------------------------------------------------
+// Rutas
+// ---------------------------------------------------------------------------
+
+export const RISK_COLORS = {
+  low: '#34d399',
+  moderate: '#fbbf24',
+  high: '#f87171',
+  unknown: '#94a3b8',
+}
+
+const SEVERITY_COLORS = { info: '#38bdf8', warning: '#fbbf24', critical: '#f87171' }
+
+/** Capa de entidades para origen, destino, rutas y alertas. Se redibuja entera con draw(). */
+export function createRouteLayer(viewer) {
+  const source = new CustomDataSource('routes')
+  viewer.dataSources.add(source)
+  const { entities } = source
+
+  function marker(id, { latitude, longitude }, label, color) {
+    entities.add({
+      id,
+      position: Cartesian3.fromDegrees(longitude, latitude, 0, MARS),
+      point: {
+        pixelSize: 12,
+        color: Color.fromCssColorString(color),
+        outlineColor: Color.BLACK,
+        outlineWidth: 2,
+        heightReference: HeightReference.CLAMP_TO_GROUND,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      label: label && {
+        text: label,
+        font: '600 13px system-ui, sans-serif',
+        fillColor: Color.WHITE,
+        outlineColor: Color.BLACK,
+        outlineWidth: 3,
+        style: LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: VerticalOrigin.BOTTOM,
+        pixelOffset: new Cartesian2(0, -14),
+        // De lejos los dos puntos coinciden y las etiquetas se pisan: solo se muestran de cerca.
+        distanceDisplayCondition: new DistanceDisplayCondition(0, 300_000),
+        heightReference: HeightReference.CLAMP_TO_GROUND,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    })
+  }
+
+  return {
+    /**
+     * @param {{ origin, destination, routes: object[], selectedId: string|null }} scene
+     * La elevación de la respuesta es sobre el areoide: se ignora y la línea se pega al terreno.
+     */
+    draw({ origin, destination, routes = [], selectedId = null }) {
+      entities.suspendEvents()
+      entities.removeAll()
+
+      for (const route of routes) {
+        const coords = route.geometry?.coordinates
+        if (!coords?.length) continue
+        const selected = route.route_id === selectedId
+        const color = Color.fromCssColorString(RISK_COLORS[route.risk_level] ?? RISK_COLORS.unknown)
+        entities.add({
+          id: `route:${route.route_id}`,
+          polyline: {
+            positions: coords.map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat, 0, MARS)),
+            width: selected ? 5 : 2.5,
+            material: selected ? color : color.withAlpha(0.45),
+            clampToGround: true,
+            classificationType: ClassificationType.BOTH,
+            zIndex: selected ? 1 : 0,
+          },
+        })
+        if (selected) {
+          route.warnings?.forEach((w, i) => {
+            if (w.latitude == null || w.longitude == null) return
+            marker(`warn:${route.route_id}:${i}`, w, '⚠', SEVERITY_COLORS[w.severity] ?? '#fbbf24')
+          })
+        }
+      }
+
+      if (origin) marker('origin', origin, 'Origen', '#60a5fa')
+      if (destination) marker('destination', destination, 'Destino', '#f472b6')
+      entities.resumeEvents()
+    },
+
+    /** Encuadra una ruta (o los dos puntos si aún no hay ruta). */
+    flyTo(points) {
+      const positions = points.map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat, 0, MARS))
+      if (!positions.length) return
+      const sphere = BoundingSphere.fromPoints(positions)
+      viewer.camera.flyToBoundingSphere(sphere, {
+        offset: new HeadingPitchRange(0, CesiumMath.toRadians(-50), Math.max(sphere.radius * 3, 3000)),
+        duration: 2,
+      })
+    },
+
+    destroy() {
+      if (!viewer.isDestroyed()) viewer.dataSources.remove(source, true)
     },
   }
 }

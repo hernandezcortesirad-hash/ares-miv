@@ -1,9 +1,33 @@
 <script setup>
+import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 
 import MapLegend from '@/components/MapLegend.vue'
 import MarsGlobe from '@/components/MarsGlobe.vue'
+import RoutePlanner from '@/components/RoutePlanner.vue'
 import { BASE_MAPS, DEFAULT_BASE_MAP_ID, getBaseMap, LANDMARKS } from '@/config/mars'
+import { useRoutesStore } from '@/stores/routes'
+
+const routesStore = useRoutesStore()
+const { origin, destination, filteredRoutes, selectedId, pickMode } = storeToRefs(routesStore)
+
+const tab = ref('explore') // 'explore' | 'routes'
+
+// Solo se dibujan las rutas que pasan los filtros del panel.
+const routeScene = computed(() => ({
+  origin: origin.value,
+  destination: destination.value,
+  routes: filteredRoutes.value,
+  selectedId: selectedId.value,
+}))
+
+function onPick(pos) {
+  if (!pickMode.value) return
+  routesStore.setPoint(pickMode.value, {
+    latitude: Number(pos.lat.toFixed(6)),
+    longitude: Number(pos.lon.toFixed(6)),
+  })
+}
 
 const globe = ref(null)
 const baseMapId = ref(DEFAULT_BASE_MAP_ID)
@@ -53,8 +77,11 @@ function fmtHeight(h) {
       class="absolute inset-0"
       :base-map-id="baseMapId"
       :terrain3d="terrain3d"
+      :route-scene="routeScene"
+      :picking="!!pickMode"
       @status="status = $event"
       @cursor="cursor = $event"
+      @pick="onPick"
     />
 
     <!-- Cabecera -->
@@ -78,10 +105,36 @@ function fmtHeight(h) {
       </div>
     </header>
 
-    <!-- Panel de exploración -->
+    <!-- Panel lateral: Explorar | Rutas -->
     <aside
-      class="absolute top-28 left-4 w-64 space-y-4 rounded-xl bg-mars-950/80 p-4 text-sm ring-1 ring-white/10 backdrop-blur"
+      class="absolute top-28 left-4 flex max-h-[calc(100vh-13rem)] w-72 flex-col rounded-xl bg-mars-950/85 text-sm ring-1 ring-white/10 backdrop-blur"
     >
+      <nav class="grid grid-cols-2 gap-1 border-b border-white/10 p-1.5 text-xs font-semibold" role="tablist">
+        <button
+          v-for="t in [
+            ['explore', '🧭 Explorar'],
+            ['routes', '🛰 Rutas'],
+          ]"
+          :key="t[0]"
+          role="tab"
+          :aria-selected="tab === t[0]"
+          class="rounded-lg py-1.5 transition"
+          :class="tab === t[0] ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5'"
+          @click="tab = t[0]"
+        >
+          {{ t[1] }}
+          <span
+            v-if="t[0] === 'routes' && routesStore.routes.length"
+            class="ml-1 rounded-full bg-mars-500 px-1.5 text-[10px]"
+          >{{ routesStore.routes.length }}</span>
+        </button>
+      </nav>
+
+      <div class="overflow-y-auto p-4">
+      <!-- v-show: el panel de rutas conserva su estado (formulario, comprobación del backend) -->
+      <RoutePlanner v-show="tab === 'routes'" @fly-to-points="globe?.flyToPoints($event)" />
+
+      <div v-show="tab === 'explore'" class="space-y-4">
       <section>
         <h2 class="mb-2 text-xs font-semibold tracking-widest text-mars-300 uppercase">Vista</h2>
         <label
@@ -147,7 +200,18 @@ function fmtHeight(h) {
           </button>
         </div>
       </section>
+      </div>
+      </div>
     </aside>
+
+    <!-- Aviso mientras se elige un punto -->
+    <div
+      v-if="pickMode"
+      class="absolute top-28 left-1/2 -translate-x-1/2 rounded-full bg-mars-500 px-4 py-1.5 text-xs font-semibold shadow-lg"
+    >
+      Haz clic en el mapa para fijar el {{ pickMode === 'origin' ? 'origen' : 'destino' }}
+      <button class="ml-2 text-white/80 hover:text-white" @click="pickMode = null">Cancelar</button>
+    </div>
 
     <!-- Leyenda del mapa base activo -->
     <MapLegend
