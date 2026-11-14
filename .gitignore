@@ -45,3 +45,12 @@ __screenshots__/
 
 # Configuración personal de Claude Code
 .claude/settings.local.json
+
+# Backend (Python)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/data/*.tif
+backend/data/*.tiff
+backend/data/cache/
