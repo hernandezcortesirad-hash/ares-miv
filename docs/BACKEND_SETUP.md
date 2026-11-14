@@ -1,8 +1,10 @@
 # Backend ARES-MIV — infraestructura y puesta en marcha
 
-Guía para quien vaya a programar el backend. El **contrato de la API** (qué endpoints, qué JSON)
-está en [API_CONTRACT.md](API_CONTRACT.md). Este archivo explica **qué instalar, qué datos bajar
-y cómo organizar el código**.
+Guía para quien vaya a programar el backend. El código vive en
+**https://github.com/JuniRanger/ares-miv-geospatial-system**. El **contrato de la API** está en
+[API_CONTRACT.md](API_CONTRACT.md) y las decisiones de unificación (coordenadas, PostgreSQL, CORS)
+en [PROPUESTA_UNIFICACION.md](PROPUESTA_UNIFICACION.md). Este archivo explica **qué instalar y
+qué datos bajar**.
 
 ## 1. Arquitectura
 
@@ -35,7 +37,7 @@ y cómo organizar el código**.
 
 > ⚠️ El equipo de quien creó el repo **no tiene Python instalado** todavía.
 
-### Dependencias de Python (`backend/requirements.txt`)
+### Dependencias de Python núcleo (`requirements.txt` del repo backend, sin PostgreSQL)
 
 ```
 fastapi
@@ -73,15 +75,17 @@ gdalinfo /vsicurl/https://planetarymaps.usgs.gov/mosaic/Mars/MSL/MSL_Gale_DEM_Mo
 gdalwarp -te <xmin> <ymin> <xmax> <ymax> -tr 2 2 -r bilinear \
   -co COMPRESS=DEFLATE -co TILED=YES \
   /vsicurl/https://planetarymaps.usgs.gov/mosaic/Mars/MSL/MSL_Gale_DEM_Mosaic_1m_v3.tif \
-  backend/data/dem_mount_sharp_2m.tif
+  data/processed/dem_mount_sharp_2m.tif
 ```
-Hacedlo en un script versionado: `backend/scripts/prepare_dem.py` (con rasterio) o `.sh` con GDAL,
-para que cualquiera pueda regenerar el archivo.
+Hacedlo en un script versionado: `scripts/prepare_dem.py` (con rasterio) o `.sh` con GDAL,
+para que cualquiera pueda regenerar el archivo. **Anotad el CRS que muestre `gdalinfo`**: va en
+`GET /site` y decide la conversión de coordenadas (ver la propuesta, §3).
 
 **Por qué 2 m y no 1 m:** una zona de 10 × 10 km a 1 m son 100 millones de celdas (~400 MB en
 memoria) y A\* se vuelve lento. A 2 m son 25 millones: suficiente para una caminata y rápido.
 
-**Dónde guardarlo:** `backend/data/` está en `.gitignore`. **No subáis rásters a Git.** Compartid
+**Dónde guardarlo:** en `data/processed/`. Añadid `data/**/*.tif` al `.gitignore` del backend
+(hoy no está). **No subáis rásters a Git.** Compartid
 el archivo recortado por Google Drive / OneDrive, o que cada uno lo regenere con el script.
 
 ### 3.2 Travesía real de Curiosity
@@ -102,37 +106,30 @@ No hay un mapa de radiación de superficie a esta escala. Modelo propuesto:
 - **Corrección por elevación:** a menor altura, más columna de atmósfera y menos dosis.
 - Todo resultado se marca `"estimated": true` (ver contrato).
 
-## 4. Estructura de carpetas propuesta
+## 4. Dónde va cada cosa en el repo del backend
 
-```
-ares-miv/
-├─ src/                      ← frontend (ya existe)
-├─ docs/                     ← este archivo y el contrato
-└─ backend/
-   ├─ app/
-   │  ├─ main.py             ← crea FastAPI, CORS, routers, manejador de errores
-   │  ├─ core/
-   │  │  ├─ config.py        ← Settings (pydantic-settings): rutas, límites por defecto
-   │  │  └─ errors.py        ← ApiError + formato {"error": {...}}
-   │  ├─ api/
-   │  │  ├─ health.py  site.py  terrain.py  routes.py  traverse.py  images.py  layers.py
-   │  ├─ models/             ← modelos Pydantic (petición/respuesta) = contrato
-   │  └─ services/
-   │     ├─ dem.py           ← carga el GeoTIFF una vez; elevación, pendiente, rugosidad
-   │     ├─ pathfinding.py   ← A* (heapq + numpy) sobre la malla de costes
-   │     ├─ radiation.py     ← modelo de dosis estimada
-   │     └─ nasa.py          ← clientes httpx + caché (travesía, imágenes)
-   ├─ data/                  ← DEM recortado, science_stops.geojson (DEM fuera de Git)
-   ├─ scripts/prepare_dem.py
-   ├─ tests/
-   ├─ requirements.txt
-   └─ .env.example
-```
+La estructura ya existe en `ares-miv-geospatial-system`. Qué rellenar en cada archivo:
 
-## 5. Configuración (`backend/.env`)
+| Archivo existente | Qué implementar |
+|---|---|
+| `app/main.py` | Añadir `CORSMiddleware`; dejar de depender de la base de datos |
+| `app/config.py` | Nuevos ajustes: `DEM_PATH`, `CORS_ORIGINS`, límites EVA, TTL de caché |
+| `app/schemas/*.py` | Modelos del contrato unificado (`route.py`, `terrain.py`, `common.py`…) |
+| `app/services/elevation_service.py` | Cargar el GeoTIFF **una vez**; elevación, pendiente, rugosidad |
+| `app/algorithms/terrain_cost.py` | Coste por celda a partir de pendiente, rugosidad, inercia térmica y radiación |
+| `app/algorithms/astar.py` | A\* (`heapq` + `numpy`) sobre la malla de costes |
+| `app/algorithms/risk_analysis.py` | Generar `warnings` con posición y `distance_m` |
+| `app/services/route_service.py` | Orquestar: lat/lon → celdas → A\* → GeoJSON + métricas + perfil; guardar en memoria |
+| `app/services/radiation_service.py` | Modelo de dosis estimada (§3.4) |
+| `app/services/nasa_service.py` | Clientes `httpx` + caché: travesía de Curiosity e imágenes |
+| Nuevos: `app/api/routes/site.py` | `GET /site` + `data/science_stops.geojson` |
+| `scripts/prepare_dem.py` | Recorte del DEM (§3.1) |
+
+## 5. Configuración (`.env` del repo backend)
 
 ```env
-DEM_PATH=data/dem_mount_sharp_2m.tif
+API_PREFIX=/api/v1
+DEM_PATH=data/processed/dem_mount_sharp_2m.tif
 SCIENCE_STOPS_PATH=data/science_stops.geojson
 CORS_ORIGINS=http://localhost:5173
 NASA_CACHE_TTL_S=86400
@@ -147,13 +144,15 @@ En el frontend, añadir a `.env.local`: `VITE_API_URL=http://localhost:8000/api/
 ## 6. Arrancar en local
 
 ```bash
-cd backend
+git clone https://github.com/JuniRanger/ares-miv-geospatial-system.git
+cd ares-miv-geospatial-system
 python -m venv .venv
 .venv\Scripts\activate          # Windows  (Linux/Mac: source .venv/bin/activate)
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
-Abrir http://localhost:8000/docs para probar los endpoints.
+Abrir http://localhost:8000/docs para probar los endpoints. Sin Docker ni PostgreSQL: con la
+propuesta aprobada, la API arranca sola (`docker compose up` también, ya sin base de datos).
 
 ## 7. Notas técnicas para el A\*
 
