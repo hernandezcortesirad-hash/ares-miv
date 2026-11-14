@@ -1,10 +1,15 @@
 # Backend ARES-MIV — infraestructura y puesta en marcha
 
 Guía para quien vaya a programar el backend. El código vive en
-**https://github.com/JuniRanger/ares-miv-geospatial-system**. El **contrato de la API** está en
-[API_CONTRACT.md](API_CONTRACT.md) y las decisiones de unificación (coordenadas, PostgreSQL, CORS)
-en [PROPUESTA_UNIFICACION.md](PROPUESTA_UNIFICACION.md). Este archivo explica **qué instalar y
+**https://github.com/JuniRanger/ares-miv-geospatial-system**. El **contrato de la API (v1.1)** está
+en [su `docs/API_CONTRACTS.md`](https://github.com/JuniRanger/ares-miv-geospatial-system/blob/main/docs/API_CONTRACTS.md)
+y las decisiones de unificación (coordenadas, PostgreSQL, CORS) en
+[PROPUESTA_UNIFICACION.md](PROPUESTA_UNIFICACION.md). Este archivo explica **qué instalar y
 qué datos bajar**.
+
+> **Si algo de aquí no coincide con el contrato v1.1, manda el contrato.** En especial, la v1.1
+> sustituye el DEM suelto por un `cost_stack.tif` multibanda en un almacén estático, con su
+> registro de capas (`layers_registry.yaml`) y sus variables de configuración (§8 del contrato).
 
 ## 1. Arquitectura
 

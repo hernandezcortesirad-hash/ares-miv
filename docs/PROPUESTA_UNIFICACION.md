@@ -5,6 +5,12 @@
 quepa en las 24 h del reto.
 **Contrato resultante:** [API_CONTRACT.md](API_CONTRACT.md).
 
+> **Estado (14/11/2026): incorporada.** El backend publicó el contrato **v1.1** en
+> [su repositorio](https://github.com/JuniRanger/ares-miv-geospatial-system/blob/main/docs/API_CONTRACTS.md)
+> con estas decisiones (coordenadas, `/api/v1`, sin PostgreSQL, radiación estimada) y añadió el
+> almacén estático, el registro de capas y el contrato de ingesta. Este documento queda como
+> registro de por qué se decidió así.
+
 ---
 
 ## 1. Decisiones que hay que aprobar
