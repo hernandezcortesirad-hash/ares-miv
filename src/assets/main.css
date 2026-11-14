@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-mars-950: #140806;
+  --color-mars-900: #24110b;
+  --color-mars-700: #6b2c17;
+  --color-mars-500: #c1440e;
+  --color-mars-300: #e8916b;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-mars-950);
+  color: #f4e9e4;
+}
+
+/* Créditos de Cesium más discretos sobre el fondo oscuro */
+.cesium-viewer-bottom {
+  opacity: 0.6;
+}
