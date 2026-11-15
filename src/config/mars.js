@@ -96,6 +96,53 @@ export const LANDMARKS = [
   { id: 'hellas', name: 'Hellas Planitia', lat: -42.4, lon: 70.5, range: 3_200_000 },
 ]
 
+/**
+ * Cobertura real del ráster de pendiente que usa el backend (map_mart/slope_5m.tif, DEM HiRISE
+ * de Gale a 5 m), leída de sus metadatos: [lon_min, lat_min, lon_max, lat_max].
+ * Fuera de este rectángulo el backend responde 422 POINT_OUTSIDE_MAP. Dentro hay zonas sin dato
+ * (≈ 18 % del rectángulo, bordes del DEM). Cuando el backend implemente GET /site, leerlo de ahí.
+ */
+export const STUDY_AREA = {
+  name: 'Cráter Gale · DEM HiRISE 5 m',
+  bbox: [137.1242, -5.0986, 137.6805, -4.1297],
+}
+
+/** Radio de la esfera Mars 2000, el mismo que declara el CRS del DEM del backend. */
+export const MARS_RADIUS_M = 3_396_190
+
+/** Distancia en línea recta (gran círculo) entre dos puntos { latitude, longitude }, en metros. */
+export function distanceOnMarsM(a, b) {
+  const toRad = Math.PI / 180
+  const dLat = (b.latitude - a.latitude) * toRad
+  const dLon = (b.longitude - a.longitude) * toRad
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.latitude * toRad) * Math.cos(b.latitude * toRad) * Math.sin(dLon / 2) ** 2
+  return 2 * MARS_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/** Puntos [lon, lat] de un círculo de radio radiusM alrededor de center (para dibujarlo). */
+export function circleOnMars(center, radiusM, steps = 90) {
+  const toRad = Math.PI / 180
+  const lat1 = center.latitude * toRad
+  const lon1 = center.longitude * toRad
+  const d = radiusM / MARS_RADIUS_M
+  const pts = []
+  for (let i = 0; i <= steps; i++) {
+    const brg = (2 * Math.PI * i) / steps
+    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brg))
+    const lon2 =
+      lon1 + Math.atan2(Math.sin(brg) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2))
+    pts.push([lon2 / toRad, lat2 / toRad])
+  }
+  return pts
+}
+
+export function isInStudyArea({ latitude, longitude }) {
+  const [w, s, e, n] = STUDY_AREA.bbox
+  return longitude >= w && longitude <= e && latitude >= s && latitude <= n
+}
+
 export const HOME_VIEW = { lat: 10, lon: -90, height: 14_000_000 }
 
 export const ION_CONFIG = {

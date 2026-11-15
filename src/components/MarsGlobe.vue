@@ -7,8 +7,11 @@ import {
   createRouteLayer,
   flyHome,
   flyToLandmark,
+  introFlight,
+  introStartView,
   loadTerrain3D,
   setBaseMap,
+  sampleTerrainHeights,
   setTerrain3D,
   trackClick,
   trackCursor,
@@ -21,9 +24,14 @@ const props = defineProps({
   routeScene: { type: Object, default: null },
   /** Cursor en cruz mientras se elige un punto en el mapa. */
   picking: { type: Boolean, default: false },
+  /**
+   * Ritmo bajo de dibujo (mientras otra animación tapa el visor, p. ej. la transición de entrada):
+   * Cesium sigue cargando el relieve pero deja el procesador libre para esa animación.
+   */
+  throttled: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['status', 'cursor', 'pick'])
+const emit = defineEmits(['status', 'cursor', 'pick', 'intro-done'])
 
 const container = ref(null)
 
@@ -34,6 +42,37 @@ let cursor = null
 let clicks = null
 let routeLayer = null
 
+/**
+ * Pausa el dibujo de Cesium mientras otra animación tapa el visor (no se ve y cada fotograma
+ * compite por el procesador); lo reanuda al terminar. La carga del relieve ya se hizo antes.
+ */
+function applyThrottle(on) {
+  if (viewer && !viewer.isDestroyed()) viewer.useDefaultRenderLoop = !on
+}
+watch(
+  () => props.throttled,
+  (on) => applyThrottle(on),
+)
+
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+/** Al montar: Marte espera lejos (o directamente en la vista inicial si se pidió menos movimiento). */
+function prepareIntro() {
+  if (reducedMotion()) {
+    flyHome(viewer, 0)
+    emit('intro-done')
+  } else {
+    introStartView(viewer)
+  }
+}
+
+/** Llamado por la vista al terminar el viaje por el sistema solar: acercamiento final a Marte. */
+async function startIntro() {
+  if (!viewer || reducedMotion()) return
+  await introFlight(viewer)
+  if (viewer) emit('intro-done')
+}
+
 function drawRoutes() {
   if (routeLayer && props.routeScene) routeLayer.draw(toRaw(props.routeScene))
 }
@@ -43,8 +82,9 @@ onMounted(async () => {
   cursor = trackCursor(viewer, (pos) => emit('cursor', pos))
   clicks = trackClick(viewer, (pos) => pos && emit('pick', pos))
   routeLayer = createRouteLayer(viewer)
+  applyThrottle(props.throttled)
   drawRoutes()
-  flyHome(viewer, 0)
+  prepareIntro()
 
   emit('status', { mode: 'loading', message: 'Cargando relieve 3D…' })
   const result = await loadTerrain3D(viewer, ION_CONFIG)
@@ -78,11 +118,34 @@ onBeforeUnmount(() => {
   routeLayer = null
 })
 
+/**
+ * Alturas del relieve 3D (para el simulador de rover). Si el relieve está oculto (mapa base
+ * visible), se muestra un momento mientras se mide y luego se restaura. null = sin relieve 3D.
+ */
+async function sampleHeights(points, opts) {
+  if (!viewer || !tileset) return null
+  const wasShown = tileset.show
+  tileset.show = true
+  try {
+    return await sampleTerrainHeights(viewer, points, opts)
+  } finally {
+    if (tileset) tileset.show = wasShown
+  }
+}
+
 defineExpose({
+  startIntro,
+  sampleHeights,
   flyHome: () => viewer && flyHome(viewer),
   flyTo: (landmark) => viewer && flyToLandmark(viewer, landmark),
   /** points: [[lon, lat], …] */
   flyToPoints: (points) => routeLayer?.flyTo(points),
+  /** Explorador animado: [lon, lat] o null para ocultarlo; kind 'eva' | 'rover'. */
+  setMover: (lonLat, kind) => routeLayer?.setMover(lonLat, kind),
+  /** Igual, pero solo si la cámara está lejos (más alta que minHeightM): no estorba de cerca. */
+  flyToPointsIfFar: (points, minHeightM) => {
+    if (viewer && viewer.camera.positionCartographic.height > minHeightM) routeLayer?.flyTo(points)
+  },
 })
 </script>
 
