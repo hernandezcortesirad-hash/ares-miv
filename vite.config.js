@@ -10,6 +10,9 @@ import marsTerrainHeights from './vite-plugins/marsTerrainHeights.js'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // En GitHub Pages la web vive en /<repo>/. Se usa base relativa ('./') y no '/<repo>/'
+  // porque vite-plugin-cesium copiaría Cesium a dist/<repo>/cesium con una base absoluta.
+  base: process.env.GITHUB_PAGES === 'true' ? './' : '/',
   plugins: [
     vue(),
     vueDevTools(),

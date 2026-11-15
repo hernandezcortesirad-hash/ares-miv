@@ -1,0 +1,73 @@
+# Compila la web y la publica en GitHub Pages en cada push a main.
+#
+# Antes de la primera ejecución (una sola vez):
+#   1. Settings → Pages → Source: «GitHub Actions».
+#   2. Settings → Secrets and variables → Actions → New repository secret:
+#        VITE_CESIUM_ION_TOKEN = <token de https://ion.cesium.com/tokens>
+#      (Opcional, en la pestaña «Variables»: VITE_MARS_ION_ASSET_ID, VITE_API_URL.)
+#   3. En Cesium ion, limita el token (Allowed URLs) a https://<usuario>.github.io
+#      y http://localhost:5173: el token acaba dentro del JS público.
+name: Deploy a GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Compilar
+        run: npm run build
+        env:
+          # Rutas relativas: Pages sirve la web en /<repo>/, no en la raíz.
+          GITHUB_PAGES: 'true'
+          VITE_ROUTER_BASE: /${{ github.event.repository.name }}/
+          VITE_CESIUM_ION_TOKEN: ${{ secrets.VITE_CESIUM_ION_TOKEN }}
+          VITE_MARS_ION_ASSET_ID: ${{ vars.VITE_MARS_ION_ASSET_ID || '3644333' }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+
+      - name: Comprobar que el token llegó al build
+        env:
+          TOKEN: ${{ secrets.VITE_CESIUM_ION_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::Falta el secreto VITE_CESIUM_ION_TOKEN: la web se publicará sin relieve 3D."
+          fi
+
+      # Pages no conoce las rutas de Vue Router: al recargar /mision devolvería 404.
+      - name: Fallback SPA
+        run: cp dist/index.html dist/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
