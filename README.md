@@ -12,8 +12,8 @@ npm run dev
 
 - **Sin token**: Marte se muestra sobre el elipsoide `IAU_MARS_2000` con los mapas MOLA o Viking
   servidos por NASA Trek (sin relieve 3D).
-- **Con token** (`VITE_CESIUM_ION_TOKEN`, gratis en https://ion.cesium.com/tokens): además se carga
-  el terreno 3D de Marte desde Cesium ion (`VITE_MARS_ION_ASSET_ID`).
+- **Con token** (`CESIUM_ION_TOKEN`, gratis en https://ion.cesium.com/tokens): además se carga
+  el terreno 3D de Marte desde Cesium ion (`MARS_ION_ASSET_ID`).
 
 ## Estructura
 
