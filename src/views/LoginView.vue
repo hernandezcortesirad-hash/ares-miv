@@ -84,12 +84,15 @@ function recover() {
   }
   notice.value = `SEÑAL DE CONTINGENCIA ENVIADA A ${id}. VIGENCIA 15 MIN.`
 }
+
+// Respeta la base de la web (en GitHub Pages no es '/').
+const baseUrl = import.meta.env.BASE_URL
 </script>
 
 <template>
   <div class="terminal">
     <div class="scene" aria-hidden="true">
-      <img class="scene-image" src="/bg/login-background.jpg" alt="" />
+      <img class="scene-image" :src="`${baseUrl}bg/login-background.jpg`" alt="" />
       <div class="vignette"></div>
     </div>
 

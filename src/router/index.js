@@ -5,7 +5,8 @@ import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  // En GitHub Pages BASE_URL es './', así que el workflow pasa la ruta real (/<repo>/).
+  history: createWebHistory(import.meta.env.VITE_ROUTER_BASE || import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
