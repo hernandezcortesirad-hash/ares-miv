@@ -89,13 +89,7 @@ function recover() {
 <template>
   <div class="terminal">
     <div class="scene" aria-hidden="true">
-      <div class="stars"></div>
-      <div class="stars stars-far"></div>
-      <img class="earth" src="/bg/earth-night.jpg" alt="" />
-      <div class="earth-glow"></div>
-      <div class="terrain">
-        <img src="/bg/mars-dune.jpg" alt="" />
-      </div>
+      <img class="scene-image" src="/bg/login-background.jpg" alt="" />
       <div class="vignette"></div>
     </div>
 
@@ -253,85 +247,15 @@ function recover() {
   inset: 0;
 }
 
-.stars,
-.stars-far {
+.scene-image {
   position: absolute;
   inset: 0;
-  background-repeat: repeat;
-  background-image:
-    radial-gradient(1px 1px at 8% 16%, #fff, transparent 60%),
-    radial-gradient(1.4px 1.4px at 22% 38%, rgba(255, 255, 255, 0.85), transparent 60%),
-    radial-gradient(1px 1px at 36% 12%, #fff, transparent 60%),
-    radial-gradient(1px 1px at 48% 28%, rgba(255, 255, 255, 0.7), transparent 60%),
-    radial-gradient(1.6px 1.6px at 63% 18%, #fff, transparent 60%),
-    radial-gradient(1px 1px at 74% 42%, rgba(255, 255, 255, 0.75), transparent 60%),
-    radial-gradient(1px 1px at 86% 14%, #fff, transparent 60%),
-    radial-gradient(1.2px 1.2px at 92% 33%, rgba(210, 225, 255, 0.9), transparent 60%),
-    radial-gradient(1px 1px at 14% 62%, rgba(255, 255, 255, 0.55), transparent 60%),
-    radial-gradient(1px 1px at 57% 8%, #fff, transparent 60%),
-    radial-gradient(1px 1px at 18% 22%, rgba(255, 255, 255, 0.6), transparent 60%),
-    radial-gradient(1.3px 1.3px at 70% 8%, #fff, transparent 60%),
-    radial-gradient(1px 1px at 81% 26%, rgba(255, 255, 255, 0.8), transparent 60%),
-    radial-gradient(1px 1px at 44% 46%, rgba(255, 255, 255, 0.5), transparent 60%);
-}
-
-.stars-far {
-  opacity: 0.55;
-  transform: scale(1.4);
-  animation: drift 90s linear infinite;
-}
-
-.earth {
-  position: absolute;
-  left: -5%;
-  top: -16%;
-  width: min(1480px, 88vw);
-  height: auto;
-  mix-blend-mode: lighten;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
   pointer-events: none;
   user-select: none;
-  filter: saturate(1.15) contrast(1.06);
-}
-
-.earth-glow {
-  position: absolute;
-  left: 10%;
-  top: 0;
-  width: min(820px, 52vw);
-  height: min(820px, 52vw);
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(90, 170, 255, 0.28), transparent 66%);
-  filter: blur(8px);
-  pointer-events: none;
-}
-
-.terrain {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 50%;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.terrain img {
-  width: 100%;
-  height: 160%;
-  object-fit: cover;
-  object-position: 18% 100%;
-  transform: scale(1.48);
-  transform-origin: 22% 100%;
-  filter: saturate(1.25) contrast(1.1) brightness(0.86);
-}
-
-.terrain::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(to bottom, #0a0a0c 0%, rgba(10, 10, 12, 0.88) 12%, rgba(10, 10, 12, 0.28) 30%, transparent 48%),
-    linear-gradient(to top, rgba(0, 0, 0, 0.4), transparent 28%);
 }
 
 .vignette {
@@ -804,7 +728,6 @@ function recover() {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stars-far,
   .shake {
     animation: none;
   }
