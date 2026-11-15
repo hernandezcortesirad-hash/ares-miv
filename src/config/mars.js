@@ -149,11 +149,13 @@ export const HOME_VIEW = { lat: 10, lon: -90, height: 14_000_000 }
 // GitHub Pages, un clon) muestra el relieve 3D sin configurar nada. Está limitado en ion:
 // solo scope assets:read, solo el asset Cesium Mars y solo desde ares-miv.vercel.app,
 // hernandezcortesirad-hash.github.io y localhost:5173. Para otra URL, añádela en ion o
-// define VITE_CESIUM_ION_TOKEN (tiene prioridad).
+// define CESIUM_ION_TOKEN (tiene prioridad; también vale el nombre antiguo VITE_CESIUM_ION_TOKEN).
 const PUBLIC_ION_TOKEN =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IlFWVnlpS1BoUnRrcW5mMkIiLCJqdGkiOiIxZmUxYjQ0OS01ZjAwLTRiZmYtOTQ0Zi1kYmFkZDFlY2UwOTMiLCJpZCI6NTQ5NTMzLCJzdWIiOiJJcmFkIEhlcm7DoW5kZXogQ29ydGVzIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2VzaXVtLmNvbSIsImF1ZCI6ImFyZXMtbWl2LXdlYiIsImlhdCI6MTc5NDc2NDUzOH0.sfzmLYe-6y_ETB4TbT6w_l5QXMtJJXnPGGSrxYOXEVk'
 
 export const ION_CONFIG = {
-  token: import.meta.env.VITE_CESIUM_ION_TOKEN || PUBLIC_ION_TOKEN,
-  marsAssetId: Number(import.meta.env.VITE_MARS_ION_ASSET_ID) || 3644333,
+  token:
+    import.meta.env.CESIUM_ION_TOKEN || import.meta.env.VITE_CESIUM_ION_TOKEN || PUBLIC_ION_TOKEN,
+  marsAssetId:
+    Number(import.meta.env.MARS_ION_ASSET_ID || import.meta.env.VITE_MARS_ION_ASSET_ID) || 3644333,
 }

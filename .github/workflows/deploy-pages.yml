@@ -4,7 +4,7 @@
 #   1. Settings → Pages → Source: «GitHub Actions».
 #   2. Settings → Secrets and variables → Actions → New repository secret:
 #        VITE_CESIUM_ION_TOKEN = <token de https://ion.cesium.com/tokens>
-#      (Opcional, en la pestaña «Variables»: VITE_MARS_ION_ASSET_ID, VITE_API_URL.)
+#      (Opcional, en la pestaña «Variables»: MARS_ION_ASSET_ID, VITE_API_URL.)
 #   3. En Cesium ion, limita el token (Allowed URLs) a https://<usuario>.github.io
 #      y http://localhost:5173: el token acaba dentro del JS público.
 name: Deploy a GitHub Pages
@@ -42,8 +42,8 @@ jobs:
           # Rutas relativas: Pages sirve la web en /<repo>/, no en la raíz.
           GITHUB_PAGES: 'true'
           VITE_ROUTER_BASE: /${{ github.event.repository.name }}/
-          VITE_CESIUM_ION_TOKEN: ${{ secrets.VITE_CESIUM_ION_TOKEN }}
-          VITE_MARS_ION_ASSET_ID: ${{ vars.VITE_MARS_ION_ASSET_ID || '3644333' }}
+          CESIUM_ION_TOKEN: ${{ secrets.VITE_CESIUM_ION_TOKEN }}
+          MARS_ION_ASSET_ID: ${{ vars.MARS_ION_ASSET_ID || '3644333' }}
           VITE_API_URL: ${{ vars.VITE_API_URL }}
 
       - name: Comprobar que el token llegó al build
