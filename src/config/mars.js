@@ -154,6 +154,6 @@ const PUBLIC_ION_TOKEN =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IlFWVnlpS1BoUnRrcW5mMkIiLCJqdGkiOiIxZmUxYjQ0OS01ZjAwLTRiZmYtOTQ0Zi1kYmFkZDFlY2UwOTMiLCJpZCI6NTQ5NTMzLCJzdWIiOiJJcmFkIEhlcm7DoW5kZXogQ29ydGVzIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2VzaXVtLmNvbSIsImF1ZCI6ImFyZXMtbWl2LXdlYiIsImlhdCI6MTc5NDc2NDUzOH0.sfzmLYe-6y_ETB4TbT6w_l5QXMtJJXnPGGSrxYOXEVk'
 
 export const ION_CONFIG = {
-  token: import.meta.env.VITE_CESIUM_ION_TOKEN || PUBLIC_ION_TOKEN,
-  marsAssetId: Number(import.meta.env.VITE_MARS_ION_ASSET_ID) || 3644333,
+  token: import.meta.env.CESIUM_ION_TOKEN || PUBLIC_ION_TOKEN,
+  marsAssetId: Number(import.meta.env.MARS_ION_ASSET_ID) || 3644333,
 }
